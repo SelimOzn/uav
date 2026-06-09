@@ -20,7 +20,7 @@ def iou(a: Box | None, b: Box | None) -> float:
     bx2, by2 = bx+bw, by+bh
 
     ix1, iy1 = max(ax, bx), max(ay, by)
-    ix2, iy2 = min(ax2, by2), min(ay2, by2)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
 
     iw ,ih = max(0.0, ix2-ix1), max(0.0, iy2-iy1)
     inter = iw*ih

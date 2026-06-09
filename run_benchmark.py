@@ -15,7 +15,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Benchmark the lightweight UAV tracker on multiple sequences.")
     parser.add_argument("--split-dir", type=Path, default=Path().cwd().parent / "anti_uav_project/Anti-UAV-RGBT/val")
     parser.add_argument("--modality", default="visible", choices=["visible", "infrared"])
-    parser.add_argument("--max-sequences", type=int, default=100)
+    parser.add_argument("--max-sequences", type=int, default=5)
     parser.add_argument("--max-frames", type=int, default=300)
     parser.add_argument("--iou-threshold", type=float, default=0.25)
     parser.add_argument("--csv", type=Path, default=Path("outputs/lightweight_benchmark.csv"))

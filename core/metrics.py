@@ -1,5 +1,9 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
+
 from core.geometry import Box, iou
+
 
 @dataclass
 class SequenceMetrics:
@@ -12,14 +16,15 @@ class SequenceMetrics:
     reacquisitions: int = 0
     iou_sum: float = 0.0
 
-    def update(self,
-               exists: bool,
-               gt_box: Box | None,
-               pred_box: Box | None,
-               status: str,
-               event: str | None,
-               iou_threshold: float) -> None:
-
+    def update(
+        self,
+        exists: bool,
+        gt_box: Box | None,
+        pred_box: Box | None,
+        status: str,
+        event: str | None,
+        iou_threshold: float,
+    ) -> None:
         self.frames += 1
         if exists:
             self.target_frames += 1
@@ -42,12 +47,11 @@ class SequenceMetrics:
             self.reacquisitions += 1
 
     def as_dict(self) -> dict[str, float]:
-        recall = self.true_positive_frames / self.target_frames if self.tracked_frames else 0.0
+        recall = self.true_positive_frames / self.target_frames if self.target_frames else 0.0
         fp_per_frame = self.false_positive_frames / self.frames if self.frames else 0.0
         mean_iou = self.iou_sum / self.true_positive_frames if self.true_positive_frames else 0.0
         tracked_ratio = self.tracked_frames / self.frames if self.frames else 0.0
         lost_ratio = self.lost_frames / self.target_frames if self.target_frames else 0.0
-
         return {
             "frames": float(self.frames),
             "target_frames": float(self.target_frames),
@@ -56,5 +60,5 @@ class SequenceMetrics:
             "mean_iou_on_hits": mean_iou,
             "tracked_frame_ratio": tracked_ratio,
             "lost_frame_ratio": lost_ratio,
-            "reacquisitions": float(self.reacquisitions)
+            "reacquisitions": float(self.reacquisitions),
         }
