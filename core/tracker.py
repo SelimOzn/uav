@@ -95,13 +95,13 @@ class OcclusionAwareSingleTracker:
         if frame is not None:
             # 1. Kalman'ın Tahmini (PREDICTED) -> MAVİ ÇİZELİM
             # (Filtrenin nesneyi nerede beklediğini gösterir)
-            if predicted is not None:
-                # Not: Box formatının (x, y, w, h) olduğunu varsayıyoruz.
-                # Eğer yapınız (x1, y1, x2, y2) ise: px, py, px2, py2 olarak değiştirin.
-                px, py, pw, ph = map(int, predicted)
-                cv2.rectangle(frame, (px, py), (px + pw, py + ph), (255, 0, 0), 2)
-                cv2.putText(frame, f"Pred ID:{self.track_id}", (px, max(0, py - 5)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+            # if predicted is not None:
+            #     # Not: Box formatının (x, y, w, h) olduğunu varsayıyoruz.
+            #     # Eğer yapınız (x1, y1, x2, y2) ise: px, py, px2, py2 olarak değiştirin.
+            #     px, py, pw, ph = map(int, predicted)
+            #     cv2.rectangle(frame, (px, py), (px + pw, py + ph), (255, 0, 0), 2)
+            #     cv2.putText(frame, f"Pred ID:{self.track_id}", (px, max(0, py - 5)),
+            #                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
 
             # 2. Gerçekleşen Eşleşme (MATCH) -> YEŞİL ÇİZELİM
             # (Algılamadan gelen gerçek sonuç)
@@ -114,7 +114,7 @@ class OcclusionAwareSingleTracker:
             cv2.imshow("Debug: Tracker Output", frame)
             # Eğer görüntüyü dondurup adım adım gitmek istersen 1 yerine 0 yaz.
             # Kodun takılmasını engellemek için waitKey şarttır.
-            cv2.waitKey()
+            cv2.waitKey(1)
 
 
         return TrackState(

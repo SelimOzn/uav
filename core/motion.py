@@ -46,8 +46,6 @@ class MotionCandidateDetector:
         self.max_box_height = max_box_height
         self.debug = debug
         self.frame_count = 0
-        self.kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-        self.close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 5))
         self.merge_margin = merge_margin
         self.min_aspect_ratio = min_aspect_ratio
         self.max_aspect_ratio = max_aspect_ratio
@@ -67,9 +65,8 @@ class MotionCandidateDetector:
         if self.frame_count <= self.warmup_frames:
             return []
 
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.open_kernel)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self.close_kernel)
-        mask = cv2.dilate(mask, self.kernel, iterations=1)
 
         search_mask = mask
         if roi is not None:
@@ -78,26 +75,91 @@ class MotionCandidateDetector:
             search_mask = mask[int(y) : int(y + h), int(x) : int(x + w)]
 
         contours, _ = cv2.findContours(search_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        components: list[tuple[Box, float]] = []
+
+        raw_boxes = []
         for contour in contours:
-            area = cv2.contourArea(contour)
-            if area < self.min_area or area > self.max_area:
+            cx, cy, cw, ch = cv2.boundingRect(contour)
+            raw_boxes.append((cx, cy, cw, ch))
+
+        if not raw_boxes:
+            return []
+
+        cluster_mask = np.zeros_like(search_mask)
+        for cx, cy,cw ,ch in raw_boxes:
+            ex = max(0, cx - self.merge_margin)
+            ey = max(0, cy - self.merge_margin)
+            ex2 = min(search_mask.shape[1], cx+cw+self.merge_margin)
+            ey2 = min(search_mask.shape[0], cy+ch+self.merge_margin)
+            cv2.rectangle(cluster_mask, (ex, ey), (ex2, ey2), 255, -1)
+
+        cluster_contours, _ = cv2.findContours(cluster_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        clusters = {i: [] for i in range(len(cluster_contours))}
+        for rx, ry, rw, rh in raw_boxes:
+            center_x = rx + rw / 2.0
+            center_y = ry + rh / 2.0
+            for i, contour in enumerate(cluster_contours):
+                ccx, ccy, ccw, cch = cv2.boundingRect(contour)
+                if ccx <= center_x <= ccx + ccw and ccy <= center_y <= ccy + cch:
+                    clusters[i].append((rx, ry, rw, rh))
+                    break
+
+
+        detections: list[Detection] = []
+        for i, boxes in clusters.items():
+            if not boxes:
                 continue
 
-            x, y, w, h = cv2.boundingRect(contour)
-            x = max(0, x - self.pad) + x_offset
-            y = max(0, y - self.pad) + y_offset
-            w = w + self.pad * 2
-            h = h + self.pad * 2
-            box = clip_box((float(x), float(y), float(w), float(h)), width, height)
-            components.append((box, float(area)))
+            min_x = min(b[0] for b in boxes)
+            min_y = min(b[1] for b in boxes)
+            max_x = max(b[0] + b[2] for b in boxes)
+            max_y = max(b[1] + b[3] for b in boxes)
 
-        detections = self._build_object_proposals(components, width, height)
+            bw = max_x - min_x
+            bh = max_y - min_y
+
+            aspect_ratio = float(bw) / float(bh) if bh > 0 else 0.0
+            if aspect_ratio < self.min_aspect_ratio or aspect_ratio > self.max_aspect_ratio:
+                continue
+
+            bx = min_x + x_offset - self.pad
+            by = min_y + y_offset - self.pad
+            bw = bw + self.pad * 2
+            bh = bh + self.pad * 2
+
+            box = clip_box((float(bx), float(by), float(bw), float(bh)), width, height)
+            area = box_area(box)
+
+            # if area < self.min_area or area > self.max_area:
+            #     continue
+
+            score = min(1.0, area / float(self.max_area))
+            detections.append(Detection(box=box, score=score))
 
         if self.debug:
             self._show_debug(search_mask, contours, detections, x_offset, y_offset)
 
         detections.sort(key=lambda item: item.score, reverse=True)
+        debug_frame = frame.copy()
+
+        # for det in detections:
+        #     # Kutunun koordinatlarını integer'a çevir (x, y, w, h)
+        #     dx, dy, dw, dh = [int(v) for v in det.box]
+        #
+        #     # Bulunan hareketli kümeyi sarı renkte çiz
+        #     cv2.rectangle(debug_frame, (dx, dy), (dx + dw, dy + dh), (0, 255, 255), 2)
+        #
+        #     # Kutunun üzerine algılanma skorunu yaz (opsiyonel)
+        #     cv2.putText(debug_frame, f"{det.score:.2f}", (dx, max(0, dy - 5)),
+        #                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1, cv2.LINE_AA)
+        #
+        # # Ekranda göster
+        # cv2.imshow("Motion Detector - Cluster Results", debug_frame)
+        #
+        # # Eğer videonun akmasını istiyorsan 1,
+        # # her karede durup manuel olarak Space/Enter ile ilerlemek istiyorsan 0 yap.
+        # cv2.waitKey(0)
+
         return detections
 
     def _build_object_proposals(
@@ -224,14 +286,14 @@ class MotionCandidateDetector:
     ) -> None:
         debug_mask = cv2.cvtColor(search_mask, cv2.COLOR_GRAY2BGR)
         cv2.drawContours(debug_mask, contours, -1, (0, 255, 0), 1)
-        for detection in detections:
-            x, y, w, h = detection.box
-            x = int(x - x_offset)
-            y = int(y - y_offset)
-            cv2.rectangle(debug_mask, (x, y), (x + int(w), y + int(h)), (0, 0, 255), 1)
-
-        cv2.imshow("Debug: Mask Contours", debug_mask)
-        cv2.waitKey(1)
+        # for detection in detections:
+        #     x, y, w, h = detection.box
+        #     x = int(x - x_offset)
+        #     y = int(y - y_offset)
+        #     cv2.rectangle(debug_mask, (x, y), (x + int(w), y + int(h)), (0, 0, 255), 1)
+        #
+        # cv2.imshow("Debug: Mask Contours", debug_mask)
+        # cv2.waitKey(1)
 
 def detections_in_roi(detections: list[Detection], roi: Box | None) -> list[Detection]:
     if roi is None:
