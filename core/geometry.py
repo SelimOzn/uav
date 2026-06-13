@@ -1,6 +1,5 @@
 import math
 
-
 Box = tuple[float, float, float, float]
 
 def box_center(box: Box) -> tuple[float, float]:

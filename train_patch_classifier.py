@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="auto")
     parser.add_argument("--patch_size", type=int, default=64)
     parser.add_argument("--context_scale", type=float, default=2.0)
-    parser.add_argument("--max-sequences", type=int, default=12)
+    parser.add_argument("--max-sequences", type=int, default=170)
     parser.add_argument("--max-frames", type=int, default=500)
     parser.add_argument("--frame-stride", type=int, default=5)
     parser.add_argument("--epochs", type=int, default=8)

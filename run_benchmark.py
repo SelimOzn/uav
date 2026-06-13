@@ -7,7 +7,7 @@ from pathlib import Path
 
 from core.data import AntiUAVSequence
 from core.metrics import SequenceMetrics
-from core.motion import MotionCandidateDetector
+from core.motion import MotionCandidateDetector, detections_in_roi
 from core.tracker import OcclusionAwareSingleTracker
 
 
@@ -15,12 +15,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Benchmark the lightweight UAV tracker on multiple sequences.")
     parser.add_argument("--split-dir", type=Path, default=Path().cwd().parent / "anti_uav_project/Anti-UAV-RGBT/val")
     parser.add_argument("--modality", default="visible", choices=["visible", "infrared"])
-    parser.add_argument("--max-sequences", type=int, default=5)
+    parser.add_argument("--max-sequences", type=int, default=100)
     parser.add_argument("--max-frames", type=int, default=300)
-    parser.add_argument("--iou-threshold", type=float, default=0.25)
+    parser.add_argument("--iou-threshold", type=float, default=0.1)
     parser.add_argument("--csv", type=Path, default=Path("outputs/lightweight_benchmark.csv"))
     parser.add_argument("--device", default="auto", help="Patch classifier device: auto, cuda, or cpu.")
-    parser.add_argument("--patch-model", type=Path, default=None, help="Optional tiny patch CNN checkpoint.")
+    parser.add_argument("--patch-model", type=Path, default=Path().cwd() / "weights/tiny_patch_cnn.pt", help="Optional tiny patch CNN checkpoint.")
     parser.add_argument("--patch-threshold", type=float, default=0.45)
     parser.add_argument("--top-k", type=int, default=20)
     return parser.parse_args()
@@ -42,11 +42,18 @@ def evaluate_sequence(
     start = time.perf_counter()
     for record in sequence.iter_frames(max_frames=max_frames):
         height, width = record.image.shape[:2]
+        all_detections = detector.detect(record.image, roi=None)
         roi = tracker.search_roi(width, height)
-        detections = detector.detect(record.image, roi=roi)
         if patch_classifier is not None:
-            detections = patch_classifier.filter(record.image, detections, top_k=top_k)
-        state = tracker.update(detections)
+            global_cnn_detections = patch_classifier.filter(record.image, all_detections, top_k=top_k)
+        else:
+            global_cnn_detections = all_detections
+        local_detections = detections_in_roi(global_cnn_detections, roi)
+        state = tracker.update(
+            primary_detections=local_detections,
+            fallback_detections=global_cnn_detections,
+            frame=record.image,
+        )
         metrics.update(
             exists=record.exists,
             gt_box=record.gt_box,
@@ -69,7 +76,6 @@ def mean_numeric(rows: list[dict[str, float | str]]) -> dict[str, float]:
         key: sum(float(row[key]) for row in rows) / len(rows)
         for key in numeric_keys
     }
-
 
 def main() -> None:
     args = parse_args()

@@ -58,3 +58,20 @@ class KalmanBoxTracker:
     def uncertainty(self) -> float:
         return float(np.trace(self.p[:2, :2]))
 
+    def box_from_state(self, state) -> tuple[float, float, float, float]:
+        cx, cy, _, _, w, h = state[:, 0].tolist()
+        w = max(1.0, float(w))
+        h = max(1.0, float(h))
+        return float(cx - w * 0.5), float(cy - h * 0.5), w, h
+
+    def predicted_box(self):
+        if not self.initialized:
+            return None
+
+        f = self.f.copy()
+        f[:] = np.eye(6, dtype=np.float32)
+        f[0, 2] = 1.0
+        f[1, 3] = 1.0
+        x_pred = f @ self.x
+        return self.box_from_state(x_pred)
+
